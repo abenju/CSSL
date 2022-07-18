@@ -81,6 +81,10 @@ class HGMM:
         """
         T = seq.shape[0]
 
+        p_Ts = np.zeros((T, self.y, self.y))
+        mu_Ts = np.zeros((T, self.y, 1))
+        p_prev_Ts = np.zeros((T, self.y, self.y))
+
         xi_next = 0
         gamma_next = 0
 
@@ -94,9 +98,16 @@ class HGMM:
             gamma_prev = self.a[t].T @ (np.linalg.inv(self.q[t]) - np.linalg.inv(self.q[t]) @ gq_inv @ np.linalg.inv(self.q[t])) @ self.a[t]
 
             p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)
+            p_Ts[t] = p_T
             mu_T = np.linalg.inv(p_T) @ (np.linalg.inv(ps[t, :]) @ mus[t, :] + xi_next)
+            mu_Ts[t] = mu_T
 
             p_prev_T = p_T @ hs[t, :].T
+            p_prev_Ts[t] = p_prev_T
+
+            xi_next = xi_prev
+            gamma_next = gamma_prev
+        return p_Ts, mu_Ts, p_prev_Ts
 
         return None  # TODO: sort out returns, page 9
 
