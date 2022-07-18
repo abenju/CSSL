@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import multivariate_normal
 
 
 class HGMM:
@@ -12,7 +13,7 @@ class HGMM:
         self.y = y
         self.x = x
 
-        self.pi_mu = np.random.rand(y)             # Static means mu0
+        self.pi_mu = np.random.rand(y, 1)             # Static means mu0
         self.pi_p = np.cov(np.random.rand(y, y))   # Static covariances P0
         self.a = np.random.rand(y, y)           # Transitions means matrix At
         self.q = np.cov(np.random.rand(y, y))   # Transitions covariances matrix Qt
@@ -39,14 +40,15 @@ class HGMM:
 
         # TODO: store useful values over time and adjust docstrings
 
-        z = None  # TODO covariates vector. to be clarified
         T = seq.shape[0]                                        # T length of observation sequence
         mu_t = self.pi_mu                                       # Initialize mu 0|0
         p_t = self.pi_p                                         # Initialize P 0|0
 
-        mus = np.zeros((T, self.y))
+        mus = np.zeros((T, self.y, 1))
         ps = np.zeros((T, self.y, self.y))
         hs = np.zeros((T, self.y, self.y))
+
+        likelihoods = np.zeros(T)
 
         for t, x in enumerate(seq):
             prev_mu = self.a @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
@@ -58,15 +60,17 @@ class HGMM:
             sigma = self.r + self.b @ prev_p @ self.b.T         # Sigma t = Rt + Bt * P t|t-1 * BtT
             g = prev_p @ self.b.T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
 
-            igb = np.identity(self.x) - g @ self.b
-            mu_t = igb @ prev_mu + g @ z                        # mu t|t = (I - Gt * Bt) * mu t|t-1 + Gt * xt
+            igb = np.identity(self.y) - g @ self.b
+            mu_t = igb @ prev_mu + g @ x                        # mu t|t = (I - Gt * Bt) * mu t|t-1 + Gt * xt
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
             ps[t, :] = p_t
+            norm = multivariate_normal(mean=None, cov=sigma)
+            likelihoods[t] = norm.pdf(v.T)
 
-            seq_likelihood = None   # TODO to be clarified
+        seq_likelihood = np.prod(likelihoods)
 
-            return seq_likelihood, mus, ps, hs
+        return seq_likelihood, mus, ps, hs
 
     def bw_backward(self, seq, mus, ps, hs):
         """
@@ -83,7 +87,7 @@ class HGMM:
             x = seq[t, :]
 
             xi = xi_next + self.b.T @ np.linalg.inv(self.r) @ x
-            gamma = gamma_next @ self.b.T @ np.linalg.inv(self.r) @ self.b
+            gamma = gamma_next @ self.b.T @ np.linalg.inv(self.r) @ self.b  # fix size
             gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q))
             xi_prev = self.a.T @ np.linalg.inv(self.q) @ gq_inv @ xi
             gamma_prev = self.a.T @ (np.linalg.inv(self.q) - np.linalg.inv(self.q) @ gq_inv @ np.linalg.inv(self.q)) @ self.a
@@ -94,7 +98,6 @@ class HGMM:
             p_prev_T = p_T @ hs[t, :].T
 
         return None  # TODO: sort out returns, page 9
-
 
     def corr_y_y(self):
         pass
@@ -109,5 +112,8 @@ class HGMM:
         pass
 
     def em_train(self):
-        pass
+        for i in range(100):
+            self.a = self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y())
+            self.b = self.corr_x_y() @ np.linalg.inv(self.corr_y_y())
+            self.q = self.corr_y_y() - self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y()) @ self.corr_y_ymin().T
 
