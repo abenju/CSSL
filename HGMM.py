@@ -3,7 +3,7 @@ from scipy.stats import multivariate_normal
 
 
 class HGMM:
-    def __init__(self, y, x):
+    def __init__(self, y, x, t):
         """
         Latent model for CSSL regression using a Gaussian HMM.
         Args:
@@ -12,21 +12,22 @@ class HGMM:
         """
         self.y = y
         self.x = x
+        self.T = t
 
         self.pi_mu = np.random.rand(y, 1)             # Static means mu0
         self.pi_p = np.cov(np.random.rand(y, y))   # Static covariances P0
-        self.a = np.random.rand(y, y)           # Transitions means matrix At
-        self.q = np.cov(np.random.rand(y, y))   # Transitions covariances matrix Qt
-        self.b = np.random.rand(x, y)           # Emission means matrix Bt
-        self.r = np.cov(np.random.rand(x, x))   # Emission covariances matrix Rt
+        self.a = np.random.rand(t, y, y)           # Transitions means matrix At
+        self.q = np.cov(np.random.rand(t, y, y))   # Transitions covariances matrix Qt
+        self.b = np.random.rand(t, x, y)           # Emission means matrix Bt
+        self.r = np.cov(np.random.rand(t, x, x))   # Emission covariances matrix Rt
 
     def initilize(self):
         self.pi_mu = np.random.rand(self.y)
         self.pi_p = np.cov(np.random.rand(self.y, self.y))
-        self.a = np.random.rand(self.y, self.y)
-        self.q = np.cov(np.random.rand(self.y, self.y))
-        self.b = np.random.rand(self.x, self.y)
-        self.r = np.cov(np.random.rand(self.x, self.x))
+        self.a = np.random.rand(self.T, self.y, self.y)
+        self.q = np.cov(np.random.rand(self.T, self.y, self.y))
+        self.b = np.random.rand(self.T, self.x, self.y)
+        self.r = np.cov(np.random.rand(self.T, self.x, self.x))
 
     def bw_forward(self, seq: np.ndarray):
         """
@@ -51,16 +52,16 @@ class HGMM:
         likelihoods = np.zeros(T)
 
         for t, x in enumerate(seq):
-            prev_mu = self.a @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
-            prev_p = self.q + self.a @ p_t @ self.a.T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
-            h = p_t @ self.a.T @ np.linalg.inv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
+            prev_mu = self.a[t] @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
+            prev_p = self.q[t] + self.a[t] @ p_t @ self.a[t].T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
+            h = p_t @ self.a[t].T @ np.linalg.inv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
             hs[t, :] = h
 
-            v = x - self.b @ prev_mu                            # vt = xt - Bt * mu t|t-1
-            sigma = self.r + self.b @ prev_p @ self.b.T         # Sigma t = Rt + Bt * P t|t-1 * BtT
-            g = prev_p @ self.b.T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
+            v = x - self.b[t] @ prev_mu                            # vt = xt - Bt * mu t|t-1
+            sigma = self.r[t] + self.b[t] @ prev_p @ self.b[t].T         # Sigma t = Rt + Bt * P t|t-1 * BtT
+            g = prev_p @ self.b[t].T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
 
-            igb = np.identity(self.y) - g @ self.b
+            igb = np.identity(self.y) - g @ self.b[t]
             mu_t = igb @ prev_mu + g @ x                        # mu t|t = (I - Gt * Bt) * mu t|t-1 + Gt * xt
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
@@ -86,11 +87,11 @@ class HGMM:
         for t in range(T-1, -1, -1):
             x = seq[t, :]
 
-            xi = xi_next + self.b.T @ np.linalg.inv(self.r) @ x
-            gamma = gamma_next @ self.b.T @ np.linalg.inv(self.r) @ self.b  # fix size
-            gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q))
-            xi_prev = self.a.T @ np.linalg.inv(self.q) @ gq_inv @ xi
-            gamma_prev = self.a.T @ (np.linalg.inv(self.q) - np.linalg.inv(self.q) @ gq_inv @ np.linalg.inv(self.q)) @ self.a
+            xi = xi_next + self.b[t].T @ np.linalg.inv(self.r[t]) @ x
+            gamma = gamma_next @ self.b[t].T @ np.linalg.inv(self.r[t]) @ self.b[t]  # fix size
+            gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q[t]))
+            xi_prev = self.a[t].T @ np.linalg.inv(self.q[t]) @ gq_inv @ xi
+            gamma_prev = self.a[t].T @ (np.linalg.inv(self.q[t]) - np.linalg.inv(self.q[t]) @ gq_inv @ np.linalg.inv(self.q[t])) @ self.a[t]
 
             p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)
             mu_T = np.linalg.inv(p_T) @ (np.linalg.inv(ps[t, :]) @ mus[t, :] + xi_next)
@@ -111,9 +112,9 @@ class HGMM:
     def corr_x_y(self):
         pass
 
-    def em_train(self):
+    def em_train(self, t):
         for i in range(100):
-            self.a = self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y())
-            self.b = self.corr_x_y() @ np.linalg.inv(self.corr_y_y())
-            self.q = self.corr_y_y() - self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y()) @ self.corr_y_ymin().T
+            self.a[t] = self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y())
+            self.b[t] = self.corr_x_y() @ np.linalg.inv(self.corr_y_y())
+            self.q[t] = self.corr_y_y() - self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y()) @ self.corr_y_ymin().T
 
