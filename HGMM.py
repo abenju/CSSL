@@ -109,7 +109,7 @@ class HGMM:
             gamma_next = gamma_prev
         return p_Ts, mu_Ts, p_prev_Ts
 
-        return None  # TODO: sort out returns, page 9
+# From this point, K is assumed to be 1
 
     def corr_y_y(self, p_t_T, mu_t_T):
         return p_t_T + mu_t_T @ mu_t_T.T
@@ -123,9 +123,19 @@ class HGMM:
     def corr_x_y(self, x_t, mu_t_T):
         return x_t @ mu_t_T.T
 
-    def em_train(self, t):
-        for i in range(100):
-            self.a[t] = self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y())
-            self.b[t] = self.corr_x_y() @ np.linalg.inv(self.corr_y_y())
-            self.q[t] = self.corr_y_y() - self.corr_y_ymin() @ np.linalg.inv(self.corr_y_y()) @ self.corr_y_ymin().T
+    def em_train(self, t, mu_Ts, p_prev_Ts, p_Ts, xs):
+        c_y_ymin = self.corr_y_ymin(p_prev_Ts[t], mu_Ts[t], mu_Ts[t-1])
+        c_ymin_ymin = self.corr_y_y(p_Ts[t-1], mu_Ts[t-1])
+        c_x_y = self.corr_x_y(xs[t], mu_Ts[t])
+        c_y_y = self.corr_y_y(p_Ts[t], mu_Ts[t])
+        c_x_x = self.corr_x_x(xs[t])
+
+        for i in range(1, 100):
+            self.a[t] = c_y_ymin @ np.linalg.inv(c_ymin_ymin)
+            self.b[t] = c_x_y @ np.linalg.inv(c_y_y)
+            self.q[t] = c_y_y - c_y_ymin @ np.linalg.inv(c_ymin_ymin) @ c_y_ymin.T
+            self.r[t] = c_x_x - c_x_y @ np.linalg.inv(c_y_y) @ c_x_y.T
+            self.pi_mu = mu_Ts[0]
+            e = mu_Ts[0] - self.pi_mu
+            self.pi_p = p_Ts[0] + e @ e.T
 
