@@ -111,17 +111,17 @@ class HGMM:
 
         return None  # TODO: sort out returns, page 9
 
-    def corr_y_y(self):
-        pass
+    def corr_y_y(self, p_t_T, mu_t_T):
+        return p_t_T + mu_t_T @ mu_t_T.T
 
-    def corr_y_ymin(self):
-        pass
+    def corr_y_ymin(self, p_prev_T, mu_t_T, mu_prev_t):
+        return p_prev_T + mu_t_T @ mu_prev_t.T
 
-    def corr_x_x(self):
-        pass
+    def corr_x_x(self, x_t):
+        return x_t @ x_t.T
 
-    def corr_x_y(self):
-        pass
+    def corr_x_y(self, x_t, mu_t_T):
+        return x_t @ mu_t_T.T
 
     def em_train(self, t):
         for i in range(100):
