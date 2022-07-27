@@ -10,6 +10,8 @@ class HGMM:
             y(int): Vector size of regression output
             x(int): Vector size of feature observation input
         """
+        self.epoch = 10
+
         self.y = y
         self.x = x
         self.T = t
@@ -17,17 +19,26 @@ class HGMM:
         self.pi_mu = np.random.rand(y, 1)             # Static means mu0
         self.pi_p = np.cov(np.random.rand(y, y))   # Static covariances P0
         self.a = np.random.rand(t, y, y)           # Transitions means matrix At
-        self.q = np.cov(np.random.rand(t, y, y))   # Transitions covariances matrix Qt
         self.b = np.random.rand(t, x, y)           # Emission means matrix Bt
-        self.r = np.cov(np.random.rand(t, x, x))   # Emission covariances matrix Rt
+
+        self.q = np.zeros((t, y, y))
+        self.r = np.zeros((t, x, x))
+        for i in range(t):
+            self.q[i] = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
+            self.r[i] = np.cov(np.random.rand(x, x))  # Emission covariances matrix Rt
 
     def initilize(self):
         self.pi_mu = np.random.rand(self.y)
-        self.pi_p = np.cov(np.random.rand(self.y, self.y))
+        self.pi_p = np.cov(np.random.rand(self.y))
         self.a = np.random.rand(self.T, self.y, self.y)
-        self.q = np.cov(np.random.rand(self.T, self.y, self.y))
         self.b = np.random.rand(self.T, self.x, self.y)
-        self.r = np.cov(np.random.rand(self.T, self.x, self.x))
+
+        self.q = np.zeros((self.T, self.y, self.y))
+        self.r = np.zeros((self.T, self.x, self.x))
+        for i in range(self.T):
+            self.q[i] = np.cov(np.random.rand(self.y))  # Transitions covariances matrix Qt
+            self.r[i] = np.cov(np.random.rand(self.x))
+
 
     def bw_forward(self, seq: np.ndarray):
         """
@@ -85,8 +96,8 @@ class HGMM:
         mu_Ts = np.zeros((T, self.y, 1))
         p_prev_Ts = np.zeros((T, self.y, self.y))
 
-        xi_next = 0
-        gamma_next = 0
+        xi_next = np.zeros((self.y, 1))
+        gamma_next = np.zeros((self.y, self.y))
 
         for t in range(T-1, -1, -1):
             x = seq[t, :]
@@ -130,7 +141,7 @@ class HGMM:
         c_y_y = self.corr_y_y(p_Ts[t], mu_Ts[t])
         c_x_x = self.corr_x_x(xs[t])
 
-        for i in range(1, 100):
+        for i in range(1, self.epoch):
             self.a[t] = c_y_ymin @ np.linalg.inv(c_ymin_ymin)
             self.b[t] = c_x_y @ np.linalg.inv(c_y_y)
             self.q[t] = c_y_y - c_y_ymin @ np.linalg.inv(c_ymin_ymin) @ c_y_ymin.T
