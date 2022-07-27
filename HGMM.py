@@ -40,7 +40,7 @@ class HGMM:
             self.r[i] = np.cov(np.random.rand(self.x))
 
 
-    def bw_forward(self, seq: np.ndarray):
+    def bw_forward(self, seq: np.ndarray, t_theta):
         """
         Baum-Welch forward phase, what is the probability of being in a state given a sequence of previous observations
         Args:
@@ -63,16 +63,16 @@ class HGMM:
         likelihoods = np.zeros(T)
 
         for t, x in enumerate(seq):
-            prev_mu = self.a[t] @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
-            prev_p = self.q[t] + self.a[t] @ p_t @ self.a[t].T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
-            h = p_t @ self.a[t].T @ np.linalg.inv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
+            prev_mu = self.a[t_theta] @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
+            prev_p = self.q[t_theta] + self.a[t_theta] @ p_t @ self.a[t_theta].T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
+            h = p_t @ self.a[t_theta].T @ np.linalg.inv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
             hs[t, :] = h
 
-            v = x - self.b[t] @ prev_mu                            # vt = xt - Bt * mu t|t-1
-            sigma = self.r[t] + self.b[t] @ prev_p @ self.b[t].T         # Sigma t = Rt + Bt * P t|t-1 * BtT
-            g = prev_p @ self.b[t].T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
+            v = x - self.b[t_theta] @ prev_mu                            # vt = xt - Bt * mu t|t-1
+            sigma = self.r[t_theta] + self.b[t_theta] @ prev_p @ self.b[t_theta].T         # Sigma t = Rt + Bt * P t|t-1 * BtT
+            g = prev_p @ self.b[t_theta].T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
 
-            igb = np.identity(self.y) - g @ self.b[t]
+            igb = np.identity(self.y) - g @ self.b[t_theta]
             mu_t = igb @ prev_mu + g @ x                        # mu t|t = (I - Gt * Bt) * mu t|t-1 + Gt * xt
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
@@ -84,7 +84,7 @@ class HGMM:
 
         return seq_likelihood, mus, ps, hs
 
-    def bw_backward(self, seq, mus, ps, hs):
+    def bw_backward(self, seq, mus, ps, hs, t_theta):
         """
         Baum-Welch backwards phase, what is the probability of being in a state given a sequence of future observations
         Returns:
@@ -102,11 +102,11 @@ class HGMM:
         for t in range(T-1, -1, -1):
             x = seq[t, :]
 
-            xi = xi_next + self.b[t].T @ np.linalg.inv(self.r[t]) @ x
-            gamma = gamma_next @ self.b[t].T @ np.linalg.inv(self.r[t]) @ self.b[t]  # fix size
-            gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q[t]))
-            xi_prev = self.a[t].T @ np.linalg.inv(self.q[t]) @ gq_inv @ xi
-            gamma_prev = self.a[t].T @ (np.linalg.inv(self.q[t]) - np.linalg.inv(self.q[t]) @ gq_inv @ np.linalg.inv(self.q[t])) @ self.a[t]
+            xi = xi_next + self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ x
+            gamma = gamma_next @ self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ self.b[t_theta]  # fix size
+            gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q[t_theta]))
+            xi_prev = self.a[t_theta].T @ np.linalg.inv(self.q[t_theta]) @ gq_inv @ xi
+            gamma_prev = self.a[t_theta].T @ (np.linalg.inv(self.q[t_theta]) - np.linalg.inv(self.q[t_theta]) @ gq_inv @ np.linalg.inv(self.q[t_theta])) @ self.a[t_theta]
 
             p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)
             p_Ts[t] = p_T
