@@ -80,7 +80,7 @@ class HGMM:
             norm = multivariate_normal(mean=None, cov=sigma)
             likelihoods[t] = norm.pdf(v.T)
 
-        seq_likelihood = np.prod(likelihoods)
+        seq_likelihood = np.prod(likelihoods)  # p(Z_T) = prod[t=1, T](N(vt: 0, Sigma t))
 
         return seq_likelihood, mus, ps, hs
 
@@ -96,24 +96,24 @@ class HGMM:
         mu_Ts = np.zeros((T, self.y, 1))
         p_prev_Ts = np.zeros((T, self.y, self.y))
 
-        xi_next = np.zeros((self.y, 1))
-        gamma_next = np.zeros((self.y, self.y))
+        xi_next = np.zeros((self.y, 1))  # xi T|T+1 = 0
+        gamma_next = np.zeros((self.y, self.y))  # Gamma T|T+1 = 0
 
         for t in range(T-1, -1, -1):
             x = seq[t, :]
 
-            xi = xi_next + self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ x
-            gamma = gamma_next @ self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ self.b[t_theta]  # fix size
+            xi = xi_next + self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ x  # xi t|t = xi t|t+1 + BtT * Rt^-1 * xt
+            gamma = gamma_next @ self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ self.b[t_theta]  # Gamma t|t = Gamma t|t+t * BtT * Rt^-1 * Bt
             gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q[t_theta]))
-            xi_prev = self.a[t_theta].T @ np.linalg.inv(self.q[t_theta]) @ gq_inv @ xi
-            gamma_prev = self.a[t_theta].T @ (np.linalg.inv(self.q[t_theta]) - np.linalg.inv(self.q[t_theta]) @ gq_inv @ np.linalg.inv(self.q[t_theta])) @ self.a[t_theta]
+            xi_prev = self.a[t_theta].T @ np.linalg.inv(self.q[t_theta]) @ gq_inv @ xi  # AtT * Qt^-1 * (Gamma t|t + Qt^-1)^-1 * xi t|t
+            gamma_prev = self.a[t_theta].T @ (np.linalg.inv(self.q[t_theta]) - np.linalg.inv(self.q[t_theta]) @ gq_inv @ np.linalg.inv(self.q[t_theta])) @ self.a[t_theta]  # AtT * [Qt^-1 - Qt^-1 * (Gamma t|t + Qt^-1)^-1 * Qt^-1] * At
 
-            p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)
+            p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)  # Pt|T = (Pt|t^-1 + Gamma t|t+1)^-1
             p_Ts[t] = p_T
-            mu_T = np.linalg.inv(p_T) @ (np.linalg.inv(ps[t, :]) @ mus[t, :] + xi_next)
+            mu_T = np.linalg.inv(p_T) @ (np.linalg.inv(ps[t, :]) @ mus[t, :] + xi_next)  # mu t|T = Pt|T^-1 * (P t|t^-1 * mut|t + xi t|t+1)
             mu_Ts[t] = mu_T
 
-            p_prev_T = p_T @ hs[t, :].T
+            p_prev_T = p_T @ hs[t, :].T  # P t,t|T = P t|T * HtT
             p_prev_Ts[t] = p_prev_T
 
             xi_next = xi_prev
