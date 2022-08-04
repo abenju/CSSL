@@ -10,7 +10,6 @@ class HGMM:
             y(int): Vector size of regression output
             x(int): Vector size of feature observation input
         """
-        self.epoch = 10
 
         self.y = y
         self.x = x
@@ -27,7 +26,7 @@ class HGMM:
             self.q[i] = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
             self.r[i] = np.cov(np.random.rand(x, x))  # Emission covariances matrix Rt
 
-    def initilize(self):
+    def initialize(self):
         self.pi_mu = np.random.rand(self.y)
         self.pi_p = np.cov(np.random.rand(self.y))
         self.a = np.random.rand(self.T, self.y, self.y)
@@ -38,7 +37,6 @@ class HGMM:
         for i in range(self.T):
             self.q[i] = np.cov(np.random.rand(self.y))  # Transitions covariances matrix Qt
             self.r[i] = np.cov(np.random.rand(self.x))
-
 
     def bw_forward(self, seq: np.ndarray, t_theta):
         """
@@ -134,7 +132,7 @@ class HGMM:
     def corr_x_y(self, x_t, mu_t_T):
         return x_t @ mu_t_T.T
 
-    def em_train(self, t, mu_Ts, p_prev_Ts, p_Ts, xs):
+    def em_train(self, t, mu_Ts, p_prev_Ts, p_Ts, xs, epochs=10):
         c_y_ymin = self.corr_y_ymin(p_prev_Ts[t], mu_Ts[t], mu_Ts[t-1])
         c_ymin_ymin = self.corr_y_y(p_Ts[t-1], mu_Ts[t-1])
         c_x_y = self.corr_x_y(xs[t], mu_Ts[t])
@@ -150,3 +148,9 @@ class HGMM:
             e = mu_Ts[0] - self.pi_mu
             self.pi_p = p_Ts[0] + e @ e.T
 
+    def baum_welch(self, seq, t_theta):
+        seq_likelihood, mus, ps, hs = self.bw_forward(seq, t_theta)
+        p_Ts, mu_Ts, p_prev_Ts = self.bw_backward(seq, mus, ps, hs, t_theta)
+        self.em_train(t_theta, mu_Ts, p_prev_Ts, p_Ts, seq)
+
+        return seq_likelihood, mu_Ts, p_prev_Ts
