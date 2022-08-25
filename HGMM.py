@@ -2,14 +2,39 @@ import numpy as np
 from scipy.stats import multivariate_normal
 
 
+class ConvergenceMonitor:
+    def __init__(self, tol=1e-2, iter=10):
+        self.tol = tol
+        self.n_iter = iter
+        self.iter = 0
+        self.history = []
+
+    def reset(self):
+        self.iter = 0
+        self.history = []
+
+    def report(self, log_prob):
+        self.history.append(log_prob)
+        self.iter += 1
+
+    @property
+    def converged(self):
+        """Whether the EM algorithm converged."""
+        # XXX we might want to check that ``log_prob`` is non-decreasing.
+        return (self.iter == self.n_iter or
+                (len(self.history) >= 2 and self.history[-1] - self.history[-2] < self.tol))
+
+
 class HGMM:
-    def __init__(self, y, x, t):
+    def __init__(self, y, x, t, d_threshold=0.000001):
         """
         Latent model for CSSL regression using a Gaussian HMM.
         Args:
             y(int): Vector size of regression output
             x(int): Vector size of feature observation input
         """
+        self.divergence_threshold = d_threshold
+        self.current_divergence = 1
 
         self.y = y
         self.x = x
@@ -20,11 +45,17 @@ class HGMM:
         self.a = np.random.rand(t, y, y)           # Transitions means matrix At
         self.b = np.random.rand(t, x, y)           # Emission means matrix Bt
 
+        #self.a = np.zeros((t, y, y))
+        #self.b = np.zeros((t, x, y))
         self.q = np.zeros((t, y, y))
         self.r = np.zeros((t, x, x))
         for i in range(t):
+            #self.a[i] = np.cov(np.random.rand(x, x))
+            #self.b[i] = np.cov(np.random.rand(x, x))
             self.q[i] = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
             self.r[i] = np.cov(np.random.rand(x, x))  # Emission covariances matrix Rt
+
+        self.c_monitor = ConvergenceMonitor()
 
     def initialize(self):
         self.pi_mu = np.random.rand(self.y)
@@ -132,25 +163,29 @@ class HGMM:
     def corr_x_y(self, x_t, mu_t_T):
         return x_t @ mu_t_T.T
 
-    def em_train(self, t, mu_Ts, p_prev_Ts, p_Ts, xs, epochs=10):
+    def em_train(self, t, mu_Ts, p_prev_Ts, p_Ts, xs, epochs=1):
         c_y_ymin = self.corr_y_ymin(p_prev_Ts[t], mu_Ts[t], mu_Ts[t-1])
         c_ymin_ymin = self.corr_y_y(p_Ts[t-1], mu_Ts[t-1])
         c_x_y = self.corr_x_y(xs[t], mu_Ts[t])
         c_y_y = self.corr_y_y(p_Ts[t], mu_Ts[t])
         c_x_x = self.corr_x_x(xs[t])
 
-        for i in range(1, self.epoch):
-            self.a[t] = c_y_ymin @ np.linalg.inv(c_ymin_ymin)
-            self.b[t] = c_x_y @ np.linalg.inv(c_y_y)
+        for i in range(epochs):
+            self.a[t] = c_y_ymin @ np.linalg.inv(c_ymin_ymin) #+ 1e-5 * np.identity(self.a[t].shape[1])
+            self.b[t] = c_x_y @ np.linalg.inv(c_y_y) #+ 1e-5 * np.identity(self.b[t].shape[1])
             self.q[t] = c_y_y - c_y_ymin @ np.linalg.inv(c_ymin_ymin) @ c_y_ymin.T
             self.r[t] = c_x_x - c_x_y @ np.linalg.inv(c_y_y) @ c_x_y.T
             self.pi_mu = mu_Ts[0]
             e = mu_Ts[0] - self.pi_mu
             self.pi_p = p_Ts[0] + e @ e.T
 
-    def baum_welch(self, seq, t_theta):
-        seq_likelihood, mus, ps, hs = self.bw_forward(seq, t_theta)
-        p_Ts, mu_Ts, p_prev_Ts = self.bw_backward(seq, mus, ps, hs, t_theta)
-        self.em_train(t_theta, mu_Ts, p_prev_Ts, p_Ts, seq)
-
+    def baum_welch(self, seq, t_theta=0):
+        while True:
+            seq_likelihood, mus, ps, hs = self.bw_forward(seq, t_theta)
+            #print(seq_likelihood)
+            p_Ts, mu_Ts, p_prev_Ts = self.bw_backward(seq, mus, ps, hs, t_theta)
+            self.c_monitor.report(seq_likelihood)
+            if self.c_monitor.converged:
+                break
+            self.em_train(t_theta, mu_Ts, p_prev_Ts, p_Ts, seq)
         return seq_likelihood, mu_Ts, p_prev_Ts
