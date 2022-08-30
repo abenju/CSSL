@@ -2,6 +2,23 @@ import numpy as np
 from scipy.stats import multivariate_normal
 
 
+def normal_multivar_pdf(x, mu, cov):
+    # part1 = 1 / (((2 * np.pi) ** (len(mu) / 2)) * (np.linalg.det(cov) ** (1 / 2)))
+    # part2 = (-1 / 2) * ((x - mu).T.dot(np.linalg.inv(cov))).dot((x - mu))
+    # res = part1 * np.exp(part2)
+    # return float(res.squeeze())
+    vals, vecs = np.linalg.eigh(cov)
+    logdet = np.sum(np.log(vals))
+    valsinv = 1. / vals
+    U = vecs * np.sqrt(valsinv)
+    dim = len(vals)
+    dev = x - mu
+    maha = np.square(np.dot(dev, U)).sum()
+    log2pi = np.log(2 * np.pi)
+    res = -0.5 * (dim * log2pi + maha + logdet)
+    return np.exp(res)
+
+
 class ConvergenceMonitor:
     def __init__(self, tol=1e-2, iter=10):
         self.tol = tol
@@ -33,6 +50,17 @@ class HGMM:
             y(int): Vector size of regression output
             x(int): Vector size of feature observation input
         """
+        def rand_symmetric(size):
+            r = np.random.standard_normal(size)
+            sym = (r + r.T)/2
+            eigval, eigvec = np.linalg.eig(sym)
+            eigval[eigval < 0] = 0
+
+            result = eigvec.dot(np.diag(eigval)).dot(eigvec.T)
+            # for i in range(size[0]):
+            #     sym[i, i] = 2 * abs(sym[i, i])
+            return result
+
         self.divergence_threshold = d_threshold
         self.current_divergence = 1
 
@@ -41,9 +69,15 @@ class HGMM:
         self.T = t
 
         self.pi_mu = np.random.rand(y, 1)             # Static means mu0
-        self.pi_p = np.cov(np.random.rand(y, y))   # Static covariances P0
+        #self.pi_p = np.cov(np.random.rand(y, y))   # Static covariances P0
+        self.pi_p = rand_symmetric((y, y))  # Static covariances P0
         self.a = np.random.rand(t, y, y)           # Transitions means matrix At
         self.b = np.random.rand(t, x, y)           # Emission means matrix Bt
+
+        # self.pi_mu = np.zeros((y, 1))  # Static means mu0
+        # self.pi_p = np.cov(np.zeros((y, y)))  # Static covariances P0
+        # self.a = np.zeros((t, y, y))  # Transitions means matrix At
+        # self.b = np.zeros((t, x, y))  # Emission means matrix Bt
 
         #self.a = np.zeros((t, y, y))
         #self.b = np.zeros((t, x, y))
@@ -52,8 +86,12 @@ class HGMM:
         for i in range(t):
             #self.a[i] = np.cov(np.random.rand(x, x))
             #self.b[i] = np.cov(np.random.rand(x, x))
-            self.q[i] = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
-            self.r[i] = np.cov(np.random.rand(x, x))  # Emission covariances matrix Rt
+            # self.q[i] = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
+            # self.r[i] = np.cov(np.random.rand(x, x))  # Emission covariances matrix Rt
+            self.q[i] = rand_symmetric((y, y))
+            self.q2 = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
+            # Transitions covariances matrix Qt
+            self.r[i] = rand_symmetric((x, x))
 
         self.c_monitor = ConvergenceMonitor()
 
@@ -94,20 +132,21 @@ class HGMM:
         for t, x in enumerate(seq):
             prev_mu = self.a[t_theta] @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
             prev_p = self.q[t_theta] + self.a[t_theta] @ p_t @ self.a[t_theta].T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
-            h = p_t @ self.a[t_theta].T @ np.linalg.inv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
+            h = p_t @ self.a[t_theta].T @ np.linalg.pinv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
             hs[t, :] = h
 
             v = x - self.b[t_theta] @ prev_mu                            # vt = xt - Bt * mu t|t-1
             sigma = self.r[t_theta] + self.b[t_theta] @ prev_p @ self.b[t_theta].T         # Sigma t = Rt + Bt * P t|t-1 * BtT
-            g = prev_p @ self.b[t_theta].T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
+            g = prev_p @ self.b[t_theta].T @ np.linalg.pinv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
 
             igb = np.identity(self.y) - g @ self.b[t_theta]
             mu_t = igb @ prev_mu + g @ x                        # mu t|t = (I - Gt * Bt) * mu t|t-1 + Gt * xt
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
             ps[t, :] = p_t
-            norm = multivariate_normal(mean=None, cov=sigma)
-            likelihoods[t] = norm.pdf(v.T)
+            # norm = multivariate_normal(mean=None, cov=sigma)
+            # likelihoods[t] = norm.pdf(v.T)  # need log pdf?
+            likelihoods[t] = normal_multivar_pdf(v.T, np.zeros((sigma.shape[0], 1)), sigma)
 
         seq_likelihood = np.prod(likelihoods)  # p(Z_T) = prod[t=1, T](N(vt: 0, Sigma t))
 
@@ -131,15 +170,15 @@ class HGMM:
         for t in range(T-1, -1, -1):
             x = seq[t, :]
 
-            xi = xi_next + self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ x  # xi t|t = xi t|t+1 + BtT * Rt^-1 * xt
-            gamma = gamma_next @ self.b[t_theta].T @ np.linalg.inv(self.r[t_theta]) @ self.b[t_theta]  # Gamma t|t = Gamma t|t+t * BtT * Rt^-1 * Bt
-            gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q[t_theta]))
-            xi_prev = self.a[t_theta].T @ np.linalg.inv(self.q[t_theta]) @ gq_inv @ xi  # AtT * Qt^-1 * (Gamma t|t + Qt^-1)^-1 * xi t|t
-            gamma_prev = self.a[t_theta].T @ (np.linalg.inv(self.q[t_theta]) - np.linalg.inv(self.q[t_theta]) @ gq_inv @ np.linalg.inv(self.q[t_theta])) @ self.a[t_theta]  # AtT * [Qt^-1 - Qt^-1 * (Gamma t|t + Qt^-1)^-1 * Qt^-1] * At
+            xi = xi_next + self.b[t_theta].T @ np.linalg.pinv(self.r[t_theta]) @ x  # xi t|t = xi t|t+1 + BtT * Rt^-1 * xt
+            gamma = gamma_next @ self.b[t_theta].T @ np.linalg.pinv(self.r[t_theta]) @ self.b[t_theta]  # Gamma t|t = Gamma t|t+t * BtT * Rt^-1 * Bt
+            gq_inv = np.linalg.pinv(gamma + np.linalg.pinv(self.q[t_theta]))
+            xi_prev = self.a[t_theta].T @ np.linalg.pinv(self.q[t_theta]) @ gq_inv @ xi  # AtT * Qt^-1 * (Gamma t|t + Qt^-1)^-1 * xi t|t
+            gamma_prev = self.a[t_theta].T @ (np.linalg.pinv(self.q[t_theta]) - np.linalg.pinv(self.q[t_theta]) @ gq_inv @ np.linalg.pinv(self.q[t_theta])) @ self.a[t_theta]  # AtT * [Qt^-1 - Qt^-1 * (Gamma t|t + Qt^-1)^-1 * Qt^-1] * At
 
-            p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)  # Pt|T = (Pt|t^-1 + Gamma t|t+1)^-1
+            p_T = np.linalg.pinv(np.linalg.pinv(ps[t, :]) + gamma_next)  # Pt|T = (Pt|t^-1 + Gamma t|t+1)^-1
             p_Ts[t] = p_T
-            mu_T = np.linalg.inv(p_T) @ (np.linalg.inv(ps[t, :]) @ mus[t, :] + xi_next)  # mu t|T = Pt|T^-1 * (P t|t^-1 * mut|t + xi t|t+1)
+            mu_T = np.linalg.pinv(p_T) @ (np.linalg.pinv(ps[t, :]) @ mus[t, :] + xi_next)  # mu t|T = Pt|T^-1 * (P t|t^-1 * mut|t + xi t|t+1)
             mu_Ts[t] = mu_T
 
             p_prev_T = p_T @ hs[t, :].T  # P t,t|T = P t|T * HtT
@@ -171,10 +210,10 @@ class HGMM:
         c_x_x = self.corr_x_x(xs[t])
 
         for i in range(epochs):
-            self.a[t] = c_y_ymin @ np.linalg.inv(c_ymin_ymin) #+ 1e-5 * np.identity(self.a[t].shape[1])
-            self.b[t] = c_x_y @ np.linalg.inv(c_y_y) #+ 1e-5 * np.identity(self.b[t].shape[1])
-            self.q[t] = c_y_y - c_y_ymin @ np.linalg.inv(c_ymin_ymin) @ c_y_ymin.T
-            self.r[t] = c_x_x - c_x_y @ np.linalg.inv(c_y_y) @ c_x_y.T
+            self.a[t] = c_y_ymin @ np.linalg.pinv(c_ymin_ymin) #+ 1e-5 * np.identity(self.a[t].shape[1])
+            self.b[t] = c_x_y @ np.linalg.pinv(c_y_y) #+ 1e-5 * np.identity(self.b[t].shape[1])
+            self.q[t] = c_y_y - c_y_ymin @ np.linalg.pinv(c_ymin_ymin) @ c_y_ymin.T
+            self.r[t] = c_x_x - c_x_y @ np.linalg.pinv(c_y_y) @ c_x_y.T
             self.pi_mu = mu_Ts[0]
             e = mu_Ts[0] - self.pi_mu
             self.pi_p = p_Ts[0] + e @ e.T
