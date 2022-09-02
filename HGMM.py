@@ -107,6 +107,12 @@ class HGMM:
             self.q[i] = np.cov(np.random.rand(self.y))  # Transitions covariances matrix Qt
             self.r[i] = np.cov(np.random.rand(self.x))
 
+    def supervised_seq(self, seq, labs):
+        self.pi_mu = np.average(labs, axis=0, keepdims=True).T
+        self.pi_mu = np.cov(labs, rowvar=False)
+
+        self.baum_welch(seq)
+
     def bw_forward(self, seq: np.ndarray, t_theta):
         """
         Baum-Welch forward phase, what is the probability of being in a state given a sequence of previous observations
