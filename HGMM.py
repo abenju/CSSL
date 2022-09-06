@@ -3,10 +3,6 @@ from scipy.stats import multivariate_normal
 
 
 def normal_multivar_pdf(x, mu, cov):
-    # part1 = 1 / (((2 * np.pi) ** (len(mu) / 2)) * (np.linalg.det(cov) ** (1 / 2)))
-    # part2 = (-1 / 2) * ((x - mu).T.dot(np.linalg.inv(cov))).dot((x - mu))
-    # res = part1 * np.exp(part2)
-    # return float(res.squeeze())
     vals, vecs = np.linalg.eigh(cov)
     logdet = np.sum(np.log(vals))
     valsinv = 1. / vals
@@ -43,7 +39,7 @@ class ConvergenceMonitor:
 
 
 class HGMM:
-    def __init__(self, y, x, t, d_threshold=0.000001):
+    def __init__(self, y, x, d_threshold=0.000001):
         """
         Latent model for CSSL regression using a Gaussian HMM.
         Args:
@@ -52,7 +48,7 @@ class HGMM:
         """
         def rand_symmetric(size):
             r = np.random.standard_normal(size)
-            sym = (r + r.T)/2
+            sym = (r + r.T)
             eigval, eigvec = np.linalg.eig(sym)
             eigval[eigval < 0] = 0
 
@@ -66,54 +62,38 @@ class HGMM:
 
         self.y = y
         self.x = x
-        self.T = t
 
         self.pi_mu = np.random.rand(y, 1)             # Static means mu0
-        #self.pi_p = np.cov(np.random.rand(y, y))   # Static covariances P0
-        self.pi_p = rand_symmetric((y, y))  # Static covariances P0
-        self.a = np.random.rand(t, y, y)           # Transitions means matrix At
-        self.b = np.random.rand(t, x, y)           # Emission means matrix Bt
+        self.pi_p = rand_symmetric((y, y))            # Static covariances P0
+        self.a = np.random.rand(y, y)           # Transitions means matrix At
+        self.b = np.random.rand(x, y)           # Emission means matrix Bt
 
-        # self.pi_mu = np.zeros((y, 1))  # Static means mu0
-        # self.pi_p = np.cov(np.zeros((y, y)))  # Static covariances P0
-        # self.a = np.zeros((t, y, y))  # Transitions means matrix At
-        # self.b = np.zeros((t, x, y))  # Emission means matrix Bt
-
-        #self.a = np.zeros((t, y, y))
-        #self.b = np.zeros((t, x, y))
-        self.q = np.zeros((t, y, y))
-        self.r = np.zeros((t, x, x))
-        for i in range(t):
-            #self.a[i] = np.cov(np.random.rand(x, x))
-            #self.b[i] = np.cov(np.random.rand(x, x))
-            # self.q[i] = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
-            # self.r[i] = np.cov(np.random.rand(x, x))  # Emission covariances matrix Rt
-            self.q[i] = rand_symmetric((y, y))
-            self.q2 = np.cov(np.random.rand(y, y))  # Transitions covariances matrix Qt
-            # Transitions covariances matrix Qt
-            self.r[i] = rand_symmetric((x, x))
+        self.q = rand_symmetric((y, y))          # Transitions covariances matrix Qt
+        self.r = rand_symmetric((x, x))
 
         self.c_monitor = ConvergenceMonitor()
 
     def initialize(self):
         self.pi_mu = np.random.rand(self.y)
         self.pi_p = np.cov(np.random.rand(self.y))
-        self.a = np.random.rand(self.T, self.y, self.y)
-        self.b = np.random.rand(self.T, self.x, self.y)
+        self.a = np.random.rand(self.y, self.y)
+        self.b = np.random.rand(self.x, self.y)
 
-        self.q = np.zeros((self.T, self.y, self.y))
-        self.r = np.zeros((self.T, self.x, self.x))
-        for i in range(self.T):
-            self.q[i] = np.cov(np.random.rand(self.y))  # Transitions covariances matrix Qt
-            self.r[i] = np.cov(np.random.rand(self.x))
+        self.q = np.zeros((self.y, self.y))
+        self.r = np.zeros((self.x, self.x))
+        self.q = np.cov(np.random.rand(self.y))  # Transitions covariances matrix Qt
+        self.r = np.cov(np.random.rand(self.x))
 
     def supervised_seq(self, seq, labs):
         self.pi_mu = np.average(labs, axis=0, keepdims=True).T
-        self.pi_mu = np.cov(labs, rowvar=False)
+        if labs.shape[1] == 1:
+            self.pi_p[0, 0] = np.std(labs)
+        else:
+            self.pi_p = np.cov(labs, rowvar=False)
 
         self.baum_welch(seq)
 
-    def bw_forward(self, seq: np.ndarray, t_theta):
+    def bw_forward(self, seq: np.ndarray):
         """
         Baum-Welch forward phase, what is the probability of being in a state given a sequence of previous observations
         Args:
@@ -136,16 +116,16 @@ class HGMM:
         likelihoods = np.zeros(T)
 
         for t, x in enumerate(seq):
-            prev_mu = self.a[t_theta] @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
-            prev_p = self.q[t_theta] + self.a[t_theta] @ p_t @ self.a[t_theta].T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
-            h = p_t @ self.a[t_theta].T @ np.linalg.pinv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
+            prev_mu = self.a @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
+            prev_p = self.q + self.a @ p_t @ self.a.T           # P t|t-1 = Qt - At * P t-1|t-1 * AtT
+            h = p_t @ self.a.T @ np.linalg.inv(prev_p)          # Ht = P t-1|t-1 * AtT * P t|t-1 ^-1
             hs[t, :] = h
 
-            v = x - self.b[t_theta] @ prev_mu                            # vt = xt - Bt * mu t|t-1
-            sigma = self.r[t_theta] + self.b[t_theta] @ prev_p @ self.b[t_theta].T         # Sigma t = Rt + Bt * P t|t-1 * BtT
-            g = prev_p @ self.b[t_theta].T @ np.linalg.pinv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
+            v = x - self.b @ prev_mu                            # vt = xt - Bt * mu t|t-1
+            sigma = self.r + self.b @ prev_p @ self.b.T         # Sigma t = Rt + Bt * P t|t-1 * BtT
+            g = prev_p @ self.b.T @ np.linalg.inv(sigma)        # Gt = P t|t-1 * BtT * Sigma t ^-1
 
-            igb = np.identity(self.y) - g @ self.b[t_theta]
+            igb = np.identity(self.y) - g @ self.b
             mu_t = igb @ prev_mu + g @ x                        # mu t|t = (I - Gt * Bt) * mu t|t-1 + Gt * xt
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
@@ -158,7 +138,7 @@ class HGMM:
 
         return seq_likelihood, mus, ps, hs
 
-    def bw_backward(self, seq, mus, ps, hs, t_theta):
+    def bw_backward(self, seq, mus, ps, hs):
         """
         Baum-Welch backwards phase, what is the probability of being in a state given a sequence of future observations
         Returns:
@@ -176,15 +156,15 @@ class HGMM:
         for t in range(T-1, -1, -1):
             x = seq[t, :]
 
-            xi = xi_next + self.b[t_theta].T @ np.linalg.pinv(self.r[t_theta]) @ x  # xi t|t = xi t|t+1 + BtT * Rt^-1 * xt
-            gamma = gamma_next @ self.b[t_theta].T @ np.linalg.pinv(self.r[t_theta]) @ self.b[t_theta]  # Gamma t|t = Gamma t|t+t * BtT * Rt^-1 * Bt
-            gq_inv = np.linalg.pinv(gamma + np.linalg.pinv(self.q[t_theta]))
-            xi_prev = self.a[t_theta].T @ np.linalg.pinv(self.q[t_theta]) @ gq_inv @ xi  # AtT * Qt^-1 * (Gamma t|t + Qt^-1)^-1 * xi t|t
-            gamma_prev = self.a[t_theta].T @ (np.linalg.pinv(self.q[t_theta]) - np.linalg.pinv(self.q[t_theta]) @ gq_inv @ np.linalg.pinv(self.q[t_theta])) @ self.a[t_theta]  # AtT * [Qt^-1 - Qt^-1 * (Gamma t|t + Qt^-1)^-1 * Qt^-1] * At
+            xi = xi_next + self.b.T @ np.linalg.inv(self.r) @ x  # xi t|t = xi t|t+1 + BtT * Rt^-1 * xt
+            gamma = gamma_next @ self.b.T @ np.linalg.inv(self.r) @ self.b  # Gamma t|t = Gamma t|t+t * BtT * Rt^-1 * Bt
+            gq_inv = np.linalg.inv(gamma + np.linalg.inv(self.q))
+            xi_prev = self.a.T @ np.linalg.inv(self.q) @ gq_inv @ xi  # AtT * Qt^-1 * (Gamma t|t + Qt^-1)^-1 * xi t|t
+            gamma_prev = self.a.T @ (np.linalg.inv(self.q) - np.linalg.inv(self.q) @ gq_inv @ np.linalg.inv(self.q)) @ self.a  # AtT * [Qt^-1 - Qt^-1 * (Gamma t|t + Qt^-1)^-1 * Qt^-1] * At
 
-            p_T = np.linalg.pinv(np.linalg.pinv(ps[t, :]) + gamma_next)  # Pt|T = (Pt|t^-1 + Gamma t|t+1)^-1
+            p_T = np.linalg.inv(np.linalg.inv(ps[t, :]) + gamma_next)  # Pt|T = (Pt|t^-1 + Gamma t|t+1)^-1
             p_Ts[t] = p_T
-            mu_T = np.linalg.pinv(p_T) @ (np.linalg.pinv(ps[t, :]) @ mus[t, :] + xi_next)  # mu t|T = Pt|T^-1 * (P t|t^-1 * mut|t + xi t|t+1)
+            mu_T = np.linalg.inv(p_T) @ (np.linalg.inv(ps[t, :]) @ mus[t, :] + xi_next)  # mu t|T = Pt|T^-1 * (P t|t^-1 * mut|t + xi t|t+1)
             mu_Ts[t] = mu_T
 
             p_prev_T = p_T @ hs[t, :].T  # P t,t|T = P t|T * HtT
@@ -209,26 +189,27 @@ class HGMM:
         return x_t @ mu_t_T.T
 
     def em_train(self, t, mu_Ts, p_prev_Ts, p_Ts, xs, epochs=1):
-        c_y_ymin = self.corr_y_ymin(p_prev_Ts[t], mu_Ts[t], mu_Ts[t-1])
-        c_ymin_ymin = self.corr_y_y(p_Ts[t-1], mu_Ts[t-1])
-        c_x_y = self.corr_x_y(xs[t], mu_Ts[t])
-        c_y_y = self.corr_y_y(p_Ts[t], mu_Ts[t])
-        c_x_x = self.corr_x_x(xs[t])
+        n = mu_Ts.shape[0]
+        c_y_ymin = np.mean([self.corr_y_ymin(p_prev_Ts[t], mu_Ts[t], mu_Ts[t-1]) for t in range(1,n)], axis=0)
+        c_ymin_ymin = np.mean([self.corr_y_y(p_Ts[t-1], mu_Ts[t-1]) for t in range(1,n)], axis=0)
+        c_x_y = np.mean([self.corr_x_y(xs[t], mu_Ts[t]) for t in range(n)], axis=0)
+        c_y_y = np.mean([self.corr_y_y(p_Ts[t], mu_Ts[t]) for t in range(n)], axis=0)
+        c_x_x = np.mean([self.corr_x_x(xs[t]) for t in range(n)], axis=0)
 
         for i in range(epochs):
-            self.a[t] = c_y_ymin @ np.linalg.pinv(c_ymin_ymin) #+ 1e-5 * np.identity(self.a[t].shape[1])
-            self.b[t] = c_x_y @ np.linalg.pinv(c_y_y) #+ 1e-5 * np.identity(self.b[t].shape[1])
-            self.q[t] = c_y_y - c_y_ymin @ np.linalg.pinv(c_ymin_ymin) @ c_y_ymin.T
-            self.r[t] = c_x_x - c_x_y @ np.linalg.pinv(c_y_y) @ c_x_y.T
+            self.a = c_y_ymin @ np.linalg.inv(c_ymin_ymin) #+ 1e-5 * np.identity(self.a[t].shape[1])
+            self.b = c_x_y @ np.linalg.inv(c_y_y) #+ 1e-5 * np.identity(self.b[t].shape[1])
+            self.q = c_y_y - c_y_ymin @ np.linalg.inv(c_ymin_ymin) @ c_y_ymin.T
+            self.r = c_x_x - c_x_y @ np.linalg.inv(c_y_y) @ c_x_y.T
             self.pi_mu = mu_Ts[0]
             e = mu_Ts[0] - self.pi_mu
             self.pi_p = p_Ts[0] + e @ e.T
 
     def baum_welch(self, seq, t_theta=0):
         while True:
-            seq_likelihood, mus, ps, hs = self.bw_forward(seq, t_theta)
+            seq_likelihood, mus, ps, hs = self.bw_forward(seq)
             #print(seq_likelihood)
-            p_Ts, mu_Ts, p_prev_Ts = self.bw_backward(seq, mus, ps, hs, t_theta)
+            p_Ts, mu_Ts, p_prev_Ts = self.bw_backward(seq, mus, ps, hs)
             self.c_monitor.report(seq_likelihood)
             if self.c_monitor.converged:
                 break
