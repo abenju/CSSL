@@ -47,15 +47,29 @@ class HGMM:
             x(int): Vector size of feature observation input
         """
         def rand_symmetric(size):
-            r = np.random.standard_normal(size)
-            sym = (r + r.T)
-            eigval, eigvec = np.linalg.eig(sym)
-            eigval[eigval < 0] = 0
+            # r = np.random.standard_normal(size)
+            # sym = (r + r.T)
+            # eigval, eigvec = np.linalg.eig(sym)
+            # eigval[eigval < 0] = 0
+            #
+            # result = eigvec.dot(np.diag(eigval)).dot(eigvec.T)
+            # # for i in range(size[0]):
+            # #     sym[i, i] = 2 * abs(sym[i, i])
+            # return result
 
-            result = eigvec.dot(np.diag(eigval)).dot(eigvec.T)
-            # for i in range(size[0]):
-            #     sym[i, i] = 2 * abs(sym[i, i])
-            return result
+            # i = np.eye(size[0])
+            # r = np.random.rand(size[0], size[0])
+            # ri = r + i
+            # sym = ri.dot(ri.T)
+            # return sym
+
+            r = np.random.normal(50, 10, size=(1000, size[0]))
+            if r.shape[1] == 1:
+                sym = np.zeros(size)
+                sym[0, 0] = np.std(r)
+            else:
+                sym = np.cov(r, rowvar=False)
+            return sym
 
         self.divergence_threshold = d_threshold
         self.current_divergence = 1
@@ -65,8 +79,8 @@ class HGMM:
 
         self.pi_mu = np.random.rand(y, 1)             # Static means mu0
         self.pi_p = rand_symmetric((y, y))            # Static covariances P0
-        self.a = np.random.rand(y, y)           # Transitions means matrix At
-        self.b = np.random.rand(x, y)           # Emission means matrix Bt
+        self.a = np.random.rand(y, y) * 10           # Transitions means matrix At
+        self.b = np.random.rand(x, y) * 10           # Emission means matrix Bt
 
         self.q = rand_symmetric((y, y))          # Transitions covariances matrix Qt
         self.r = rand_symmetric((x, x))
@@ -130,9 +144,9 @@ class HGMM:
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
             ps[t, :] = p_t
-            # norm = multivariate_normal(mean=None, cov=sigma)
-            # likelihoods[t] = norm.pdf(v.T)  # need log pdf?
-            likelihoods[t] = normal_multivar_pdf(v.T, np.zeros((sigma.shape[0], 1)), sigma)
+            norm = multivariate_normal(mean=None, cov=sigma)
+            likelihoods[t] = norm.logpdf(v.T)  # need log pdf?
+            #likelihoods[t] = normal_multivar_pdf(v.T, np.zeros((sigma.shape[0], 1)), sigma)
 
         seq_likelihood = np.prod(likelihoods)  # p(Z_T) = prod[t=1, T](N(vt: 0, Sigma t))
 

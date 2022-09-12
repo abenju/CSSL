@@ -9,7 +9,7 @@ import tqdm
 
 def csv_to_img(path):
     data = pd.read_csv(path)
-    #print(data.shape)
+    print(data.shape)
     img = data.to_numpy()
     #norm = np.linalg.norm(img)
     img = img / img.max()
