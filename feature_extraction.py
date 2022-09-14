@@ -32,11 +32,16 @@ if model_name == "YOLOV5N":
     # print(*list(model.children()))
 elif model_name == "RESNET18":
     model = torchvision.models.resnet18(pretrained=True)
-    model = torch.nn.Sequential(*list(model.children())[:-1])
+    model.fc = torch.nn.Linear(512, 1)
 
     transform = transforms.Compose([transforms.Resize([224, 224]),
                                     transforms.ToTensor(),
                                     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    pt_path = "resnet18_reg1.pt"
+    model.load_state_dict(torch.load(pt_path))
+    model = torch.nn.Sequential(*list(model.children())[:-1])
+
 else:
     raise Exception("Model not supported")
 
