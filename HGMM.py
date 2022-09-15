@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import multivariate_normal
+from fit_latent_model import *
 
 
 def normal_multivar_pdf(x, mu, cov):
@@ -63,7 +64,7 @@ class HGMM:
             # sym = ri.dot(ri.T)
             # return sym
 
-            r = np.random.normal(50, 10, size=(1000, size[0]))
+            r = np.random.normal(0, 1, size=(1000, size[0]))
             if r.shape[1] == 1:
                 sym = np.zeros(size)
                 sym[0, 0] = np.std(r)
@@ -79,8 +80,8 @@ class HGMM:
 
         self.pi_mu = np.random.rand(y, 1)             # Static means mu0
         self.pi_p = rand_symmetric((y, y))            # Static covariances P0
-        self.a = np.random.rand(y, y) * 10           # Transitions means matrix At
-        self.b = np.random.rand(x, y) * 10           # Emission means matrix Bt
+        self.a = np.random.rand(y, y)          # Transitions means matrix At
+        self.b = np.random.rand(x, y)           # Emission means matrix Bt
 
         self.q = rand_symmetric((y, y))          # Transitions covariances matrix Qt
         self.r = rand_symmetric((x, x))
@@ -99,11 +100,15 @@ class HGMM:
         self.r = np.cov(np.random.rand(self.x))
 
     def supervised_seq(self, seq, labs):
-        self.pi_mu = np.average(labs, axis=0, keepdims=True).T
-        if labs.shape[1] == 1:
-            self.pi_p[0, 0] = np.std(labs)
-        else:
-            self.pi_p = np.cov(labs, rowvar=False)
+        # self.pi_mu = np.average(labs, axis=0, keepdims=True).T
+        # if labs.shape[1] == 1:
+        #     self.pi_p[0, 0] = np.std(labs)
+        # else:
+        #     self.pi_p = np.cov(labs, rowvar=False)
+
+        self.pi_mu, self.pi_p = gauss_fit(labs)
+        self.a, self.q = auto_reg1_fit(labs)
+        self.b, self.r = linear_reg_fit(seq, labs)
 
         self.baum_welch(seq)
 
@@ -144,8 +149,7 @@ class HGMM:
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
             ps[t, :] = p_t
-            norm = multivariate_normal(mean=None, cov=sigma)
-            likelihoods[t] = norm.logpdf(v.T)  # need log pdf?
+            likelihoods[t] = multivariate_normal(mean=None, cov=sigma, allow_singular=True).pdf(v.squeeze())  # need log pdf?
             #likelihoods[t] = normal_multivar_pdf(v.T, np.zeros((sigma.shape[0], 1)), sigma)
 
         seq_likelihood = np.prod(likelihoods)  # p(Z_T) = prod[t=1, T](N(vt: 0, Sigma t))
