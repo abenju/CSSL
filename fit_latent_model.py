@@ -10,16 +10,19 @@ def gauss_fit(data):
         cov = np.full((1, 1), np.var(data))
     else:
         cov = np.cov(data, rowvar=False)
+
+    noise = np.random.rand(*cov.shape) * 1e-20
     
-    return mu, cov
+    return mu, cov+noise
 
 
 def linear_reg_fit(seq, gts):
     model = LinearRegression(fit_intercept=False).fit(gts, np.squeeze(seq))
     a = model.coef_
     cov = np.cov(np.squeeze(seq) - model.predict(gts), rowvar=False)
+    noise = np.random.rand(*cov.shape) * 1e-20
 
-    return a, cov
+    return a, cov + noise
 
 
 def auto_reg1_fit(data):
@@ -31,7 +34,9 @@ def auto_reg1_fit(data):
         diff = data.T.squeeze()[1:] - results.fittedvalues
         cov = np.full((1, 1), np.var(diff))
     else:
-        model = var_model.VAR(data)
-        results = model.fit(maxlags=1)
-        #TODO
-    return a, cov
+        model = LinearRegression(fit_intercept=False).fit(data[:-1], data[1:])
+        a = model.coef_
+        cov = np.cov(data[1:] - model.predict(data[:-1]), rowvar=False)
+
+    noise = np.random.rand(*cov.shape) * 1e-20
+    return a, cov + noise

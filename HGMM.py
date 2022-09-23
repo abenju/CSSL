@@ -66,7 +66,7 @@ class HGMM:
 
             r = np.random.normal(0, 1, size=(1000, size[0]))
             if r.shape[1] == 1:
-                sym = np.zeros(size)
+                sym = np.zeros(size, dtype=np.float32)
                 sym[0, 0] = np.std(r)
             else:
                 sym = np.cov(r, rowvar=False)
@@ -78,13 +78,21 @@ class HGMM:
         self.y = y
         self.x = x
 
-        self.pi_mu = np.random.rand(y, 1)             # Static means mu0
-        self.pi_p = rand_symmetric((y, y))            # Static covariances P0
-        self.a = np.random.rand(y, y)          # Transitions means matrix At
-        self.b = np.random.rand(x, y)           # Emission means matrix Bt
+        # self.pi_mu = np.random.rand(y, 1)             # Static means mu0
+        # self.pi_p = rand_symmetric((y, y))            # Static covariances P0
+        # self.a = np.random.rand(y, y).as_type()          # Transitions means matrix At
+        # self.b = np.random.rand(x, y)           # Emission means matrix Bt
+        #
+        # self.q = rand_symmetric((y, y))          # Transitions covariances matrix Qt
+        # self.r = rand_symmetric((x, x))
 
-        self.q = rand_symmetric((y, y))          # Transitions covariances matrix Qt
-        self.r = rand_symmetric((x, x))
+        self.pi_mu = np.zeros((y, 1), dtype=np.float32)  # Static means mu0
+        self.pi_p = np.zeros((y, y), dtype=np.float32)  # Static covariances P0
+        self.a = np.zeros((y, y), dtype=np.float32)  # Transitions means matrix At
+        self.b = np.zeros((x, y), dtype=np.float32)  # Emission means matrix Bt
+
+        self.q = np.zeros((y, y), dtype=np.float32)  # Transitions covariances matrix Qt
+        self.r = np.zeros((x, x), dtype=np.float32)
 
         self.c_monitor = ConvergenceMonitor()
 
@@ -110,7 +118,7 @@ class HGMM:
         self.a, self.q = auto_reg1_fit(labs)
         self.b, self.r = linear_reg_fit(seq, labs)
 
-        self.baum_welch(seq)
+        #self.baum_welch(seq)
 
     def bw_forward(self, seq: np.ndarray):
         """
@@ -128,11 +136,11 @@ class HGMM:
         mu_t = self.pi_mu                                       # Initialize mu 0|0
         p_t = self.pi_p                                         # Initialize P 0|0
 
-        mus = np.zeros((T, self.y, 1))
-        ps = np.zeros((T, self.y, self.y))
-        hs = np.zeros((T, self.y, self.y))
+        mus = np.zeros((T, self.y, 1), dtype=np.float32)
+        ps = np.zeros((T, self.y, self.y), dtype=np.float32)
+        hs = np.zeros((T, self.y, self.y), dtype=np.float32)
 
-        likelihoods = np.zeros(T)
+        likelihoods = np.zeros(T, dtype=np.float32)
 
         for t, x in enumerate(seq):
             prev_mu = self.a @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
@@ -149,7 +157,7 @@ class HGMM:
             mus[t, :] = mu_t
             p_t = igb @ prev_p                                  # (I - Gt * Bt) * Pt|t-1
             ps[t, :] = p_t
-            likelihoods[t] = multivariate_normal(mean=None, cov=sigma, allow_singular=True).pdf(v.squeeze())  # need log pdf?
+            likelihoods[t] = multivariate_normal(mean=None, cov=sigma, allow_singular=True).logpdf(v.squeeze())  # need log pdf?
             #likelihoods[t] = normal_multivar_pdf(v.T, np.zeros((sigma.shape[0], 1)), sigma)
 
         seq_likelihood = np.prod(likelihoods)  # p(Z_T) = prod[t=1, T](N(vt: 0, Sigma t))
@@ -164,12 +172,12 @@ class HGMM:
         """
         T = seq.shape[0]
 
-        p_Ts = np.zeros((T, self.y, self.y))
-        mu_Ts = np.zeros((T, self.y, 1))
-        p_prev_Ts = np.zeros((T, self.y, self.y))
+        p_Ts = np.zeros((T, self.y, self.y), dtype=np.float32)
+        mu_Ts = np.zeros((T, self.y, 1), dtype=np.float32)
+        p_prev_Ts = np.zeros((T, self.y, self.y), dtype=np.float32)
 
-        xi_next = np.zeros((self.y, 1))  # xi T|T+1 = 0
-        gamma_next = np.zeros((self.y, self.y))  # Gamma T|T+1 = 0
+        xi_next = np.zeros((self.y, 1), dtype=np.float32)  # xi T|T+1 = 0
+        gamma_next = np.zeros((self.y, self.y), dtype=np.float32)  # Gamma T|T+1 = 0
 
         for t in range(T-1, -1, -1):
             x = seq[t, :]
