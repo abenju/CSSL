@@ -66,7 +66,7 @@ class HGMM:
 
             r = np.random.normal(0, 1, size=(1000, size[0]))
             if r.shape[1] == 1:
-                sym = np.zeros(size, dtype=np.float32)
+                sym = np.zeros(size, dtype=np.float64)
                 sym[0, 0] = np.std(r)
             else:
                 sym = np.cov(r, rowvar=False)
@@ -86,13 +86,13 @@ class HGMM:
         # self.q = rand_symmetric((y, y))          # Transitions covariances matrix Qt
         # self.r = rand_symmetric((x, x))
 
-        self.pi_mu = np.zeros((y, 1), dtype=np.float32)  # Static means mu0
-        self.pi_p = np.zeros((y, y), dtype=np.float32)  # Static covariances P0
-        self.a = np.zeros((y, y), dtype=np.float32)  # Transitions means matrix At
-        self.b = np.zeros((x, y), dtype=np.float32)  # Emission means matrix Bt
+        self.pi_mu = np.zeros((y, 1), dtype=np.float64)  # Static means mu0
+        self.pi_p = np.zeros((y, y), dtype=np.float64)  # Static covariances P0
+        self.a = np.zeros((y, y), dtype=np.float64)  # Transitions means matrix At
+        self.b = np.zeros((x, y), dtype=np.float64)  # Emission means matrix Bt
 
-        self.q = np.zeros((y, y), dtype=np.float32)  # Transitions covariances matrix Qt
-        self.r = np.zeros((x, x), dtype=np.float32)
+        self.q = np.zeros((y, y), dtype=np.float64)  # Transitions covariances matrix Qt
+        self.r = np.zeros((x, x), dtype=np.float64)
 
         self.c_monitor = ConvergenceMonitor()
 
@@ -136,11 +136,11 @@ class HGMM:
         mu_t = self.pi_mu                                       # Initialize mu 0|0
         p_t = self.pi_p                                         # Initialize P 0|0
 
-        mus = np.zeros((T, self.y, 1), dtype=np.float32)
-        ps = np.zeros((T, self.y, self.y), dtype=np.float32)
-        hs = np.zeros((T, self.y, self.y), dtype=np.float32)
+        mus = np.zeros((T, self.y, 1), dtype=np.float64)
+        ps = np.zeros((T, self.y, self.y), dtype=np.float64)
+        hs = np.zeros((T, self.y, self.y), dtype=np.float64)
 
-        likelihoods = np.zeros(T, dtype=np.float32)
+        likelihoods = np.zeros(T, dtype=np.float64)
 
         for t, x in enumerate(seq):
             prev_mu = self.a @ mu_t                             # mu t|t-1 = At * mu t-1|t-1
@@ -172,12 +172,12 @@ class HGMM:
         """
         T = seq.shape[0]
 
-        p_Ts = np.zeros((T, self.y, self.y), dtype=np.float32)
-        mu_Ts = np.zeros((T, self.y, 1), dtype=np.float32)
-        p_prev_Ts = np.zeros((T, self.y, self.y), dtype=np.float32)
+        p_Ts = np.zeros((T, self.y, self.y), dtype=np.float64)
+        mu_Ts = np.zeros((T, self.y, 1), dtype=np.float64)
+        p_prev_Ts = np.zeros((T, self.y, self.y), dtype=np.float64)
 
-        xi_next = np.zeros((self.y, 1), dtype=np.float32)  # xi T|T+1 = 0
-        gamma_next = np.zeros((self.y, self.y), dtype=np.float32)  # Gamma T|T+1 = 0
+        xi_next = np.zeros((self.y, 1), dtype=np.float64)  # xi T|T+1 = 0
+        gamma_next = np.zeros((self.y, self.y), dtype=np.float64)  # Gamma T|T+1 = 0
 
         for t in range(T-1, -1, -1):
             x = seq[t, :]

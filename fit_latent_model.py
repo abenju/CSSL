@@ -2,6 +2,7 @@ import numpy as np
 from statsmodels.tsa.vector_ar import var_model
 from statsmodels.tsa.ar_model import AutoReg
 from sklearn.linear_model import LinearRegression
+from sklearn.covariance import EmpiricalCovariance
 
 
 def gauss_fit(data):
@@ -10,19 +11,20 @@ def gauss_fit(data):
         cov = np.full((1, 1), np.var(data))
     else:
         cov = np.cov(data, rowvar=False)
+        #cov = EmpiricalCovariance().fit(data).covariance_
 
-    noise = np.random.rand(*cov.shape) * 1e-20
+    noise = (np.eye(cov.shape[0]) * 1e-10) + (np.random.rand(*cov.shape) * 1e-20)
     
-    return mu, cov+noise
+    return mu, cov
 
 
 def linear_reg_fit(seq, gts):
     model = LinearRegression(fit_intercept=False).fit(gts, np.squeeze(seq))
     a = model.coef_
     cov = np.cov(np.squeeze(seq) - model.predict(gts), rowvar=False)
-    noise = np.random.rand(*cov.shape) * 1e-20
+    noise = (np.eye(cov.shape[0]) * 1e-10) + (np.random.rand(*cov.shape) * 1e-20)
 
-    return a, cov + noise
+    return a, cov
 
 
 def auto_reg1_fit(data):
@@ -38,5 +40,5 @@ def auto_reg1_fit(data):
         a = model.coef_
         cov = np.cov(data[1:] - model.predict(data[:-1]), rowvar=False)
 
-    noise = np.random.rand(*cov.shape) * 1e-20
-    return a, cov + noise
+    noise = (np.eye(cov.shape[0]) * 1e-10) + (np.random.rand(*cov.shape) * 1e-20)
+    return a, cov
