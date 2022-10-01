@@ -59,7 +59,7 @@ def train(model, data_loader, optimizer, criterion, device, epochs=100):
                 if epoch_loss < least_loss:
                     least_loss = epoch_loss
                     torch.onnx.export(model, images, "model.onnx")
-                    torch.save(model.state_dict(), f"{experiment_name}.pt")
+                    torch.save(model.state_dict(), f"saves\\{experiment_name}.pt")
                     #wandb.save(f"{experiment_name}.pt")
             else:
                 train_loss = epoch_loss
@@ -71,7 +71,7 @@ if __name__ == "__main__":
 
     # Parse arguments
     parser = argparse.ArgumentParser(description='Visual model experiments')
-    parser.add_argument("--model", choices=["Resnet_18", "Resnet_50", "YOLO5S", "FCNresnet50"], required=True)
+    parser.add_argument("--model", choices=["Resnet_18", "Resnet_50", "YOLO5S", "Unet"], required=True)
     parser.add_argument("--density_map", action="store_true")
     parser.add_argument("--train_on", choices=["mall", "fdst", "ucsd"], nargs='*', required=True)
     parser.add_argument("--test_on", choices=["mall", "fdst", "ucsd"], nargs='*')
@@ -108,11 +108,17 @@ if __name__ == "__main__":
 
     #  TODO: adapt per model
     preprocess = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
+        transforms.Resize((640, 960)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
+
+    # preprocess = transforms.Compose([
+    #     transforms.Resize(256),
+    #     transforms.CenterCrop(224),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    # ])
 
 
     train_d = MallDataset(preprocess, args.train_on, is_map=args.density_map)

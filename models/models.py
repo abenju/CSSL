@@ -4,7 +4,7 @@ import torch.nn.functional as F
 
 import math
 
-from modules import ResNetBottleNeck, ResNetBlock, Conv, C3, SPPF, Concat
+from .modules import *
 
 
 class ResNet(nn.Module):
@@ -16,7 +16,7 @@ class ResNet(nn.Module):
         self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(self.in_planes)
         self.relu = nn.ReLU(inplace=True)
-        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.max_pool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
@@ -27,16 +27,16 @@ class ResNet(nn.Module):
         # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         # self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, in_channels, layer_n, stride=2):
+    def _make_layer(self, block, in_channels, layer_n, stride=1):
         downsample = None
-        if stride != 1 or self.inplanes != self.in_planes * block.expansion:
+        if stride != 1 or self.in_planes != in_channels * block.expansion:
             downsample = nn.Sequential(
-                nn.Conv2d(self.inplanes, in_channels * block.expansion, kernel_size=1, stride=stride, bias=False),
+                nn.Conv2d(self.in_planes, in_channels * block.expansion, kernel_size=1, stride=stride, bias=False),
                 nn.BatchNorm2d(in_channels * block.expansion),
             )
 
         layers = []
-        layers.append(block(self.in_planes, in_channels, stride, downsample))
+        layers.append(block(self.in_planes, in_channels, downsample, stride))
 
         self.in_planes = in_channels * block.expansion
         for _ in range(1, layer_n):
@@ -163,4 +163,37 @@ class YOLOv5S(nn.Module):
 
         x = self.header(x)
 
+        return x
+
+
+class UNet(nn.Module):
+    def __init__(self, header, **kwargs):
+        super(UNet, self).__init__()
+        self.bilinear = False
+
+        self.inc = DoubleConv(3, 64)
+        self.down1 = Down(64, 128)
+        self.down2 = Down(128, 256)
+        self.down3 = Down(256, 512)
+        factor = 2 if self.bilinear else 1
+        self.down4 = Down(512, 1024 // factor)
+        self.up1 = Up(1024, 512 // factor, self.bilinear)
+        self.up2 = Up(512, 256 // factor, self.bilinear)
+        self.up3 = Up(256, 128 // factor, self.bilinear)
+        self.up4 = Up(128, 64, self.bilinear)
+
+        self.header = header(**kwargs)
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+
+        x = self.header(x)
         return x
