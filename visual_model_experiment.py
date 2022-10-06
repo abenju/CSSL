@@ -14,7 +14,7 @@ class AutoDict(dict):
         return self[k]
 
 
-def train(model, data_loader, optimizer, criterion, device, epochs=100):
+def train(model, data_loader, optimizer, criterion, device, epochs=100, scheduler=None):
     wandb.watch(model, criterion, log="all", log_freq=10)
     least_loss = 999999999
     model.to(device)
@@ -58,11 +58,14 @@ def train(model, data_loader, optimizer, criterion, device, epochs=100):
                 test_loss = epoch_loss
                 if epoch_loss < least_loss:
                     least_loss = epoch_loss
-                    torch.onnx.export(model, images, "model.onnx")
+                    #torch.onnx.export(model, images, "model.onnx")
                     torch.save(model.state_dict(), f"saves\\{experiment_name}.pt")
                     #wandb.save(f"{experiment_name}.pt")
             else:
                 train_loss = epoch_loss
+
+        if scheduler:
+            scheduler.step()
 
         wandb.log({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, "test_loss": test_loss})
 
@@ -87,6 +90,7 @@ if __name__ == "__main__":
     lr = 0.001
     epochs = 100
     batch_size = 4
+    img_size = (128, 160)
 
     config = dict(
         epochs=epochs,
@@ -101,14 +105,23 @@ if __name__ == "__main__":
         momentum=0.9,
         loss="MSE",
         optimizer="SGD",
+        img_size=img_size,
+        shceduler_step=30,
+        scheduler_gamma=0.1,
     )
 
 
     # Collect data
 
     #  TODO: adapt per model
+    # preprocess = transforms.Compose([
+    #     transforms.Resize((640, 960)),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
+    # ])
+
     preprocess = transforms.Compose([
-        transforms.Resize((640, 960)),
+        transforms.Resize(img_size),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
     ])
@@ -121,11 +134,11 @@ if __name__ == "__main__":
     # ])
 
 
-    train_d = MallDataset(preprocess, args.train_on, is_map=args.density_map)
+    train_d = MallDataset(preprocess, args.train_on, is_map=args.density_map, new_size=img_size)
     l = len(train_d)
     train_size = int(args.split[0] * l)
     if len(args.split) == 2:
-        test_d = MallDataset(preprocess, args.test_on, is_map=args.density_map)
+        test_d = MallDataset(preprocess, args.test_on, is_map=args.density_map, new_size=img_size)
         train_d, val_d = torch.utils.data.random_split(train_d, [train_size, l - train_size])
     elif len(args.split) == 3:
         test_size = int(args.split[1] * l)
@@ -147,5 +160,8 @@ if __name__ == "__main__":
     with wandb.init(project="CSSL", entity="abenju", name=experiment_name, config=config):
         criterion = torch.nn.MSELoss()
         optimizer = torch.optim.SGD(model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        #optimizer = torch.optim.Adam(model.parameters())
+        scheduler = None # torch.optim.lr_scheduler.StepLR(optimizer, 30)
 
-        train(model, data, optimizer, criterion, device, epochs=config["epochs"])
+
+        train(model, data, optimizer, criterion, device, epochs=config["epochs"], scheduler=scheduler)
