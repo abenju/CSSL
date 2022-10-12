@@ -12,7 +12,7 @@ def build_vis_model(model_name, density_map):
         par = {"in_channels": 512, "upsample": 32} if density_map else {"in_features": 512}
         model = ResNet18(header, **par)
     elif model_name == "Resnet_50":
-        par = {"in_channels": 2048} if density_map else {"in_features": 2048}
+        par = {"in_channels": 2048, "upsample": 32} if density_map else {"in_features": 2048}
         model = ResNet50(header, **par)
     elif model_name == "YOLO5S":
         par = {"in_channels": 512, "upsample": 32} if density_map else {"in_features": 512}

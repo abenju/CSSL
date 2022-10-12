@@ -8,10 +8,11 @@ from .modules import *
 
 
 class ResNet(nn.Module):
-    def __init__(self, block, layers):
+    def __init__(self, block, layers, dilate=False):
         super(ResNet, self).__init__()
 
         self.in_planes = 64
+        self.dilation = 1
 
         self.conv1 = nn.Conv2d(3, self.in_planes, kernel_size=7, stride=2, padding=3, bias=False)
         self.bn1 = nn.BatchNorm2d(self.in_planes)
@@ -20,15 +21,19 @@ class ResNet(nn.Module):
 
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=dilate)
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=dilate)
 
         # to be replaced by custom head
         # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
         # self.fc = nn.Linear(512 * block.expansion, num_classes)
 
-    def _make_layer(self, block, in_channels, layer_n, stride=1):
+    def _make_layer(self, block, in_channels, layer_n, stride=1, dilate=False):
         downsample = None
+        prev_dilation = self.dilation
+        if dilate:
+            self.dilation *= stride
+            stride = 1
         if stride != 1 or self.in_planes != in_channels * block.expansion:
             downsample = nn.Sequential(
                 nn.Conv2d(self.in_planes, in_channels * block.expansion, kernel_size=1, stride=stride, bias=False),
@@ -36,11 +41,11 @@ class ResNet(nn.Module):
             )
 
         layers = []
-        layers.append(block(self.in_planes, in_channels, downsample, stride))
+        layers.append(block(self.in_planes, in_channels, downsample, stride, dilate=prev_dilation))
 
         self.in_planes = in_channels * block.expansion
         for _ in range(1, layer_n):
-            layers.append(block(self.in_planes, in_channels))
+            layers.append(block(self.in_planes, in_channels, dilate=prev_dilation))
 
         return nn.Sequential(*layers)
 
@@ -76,8 +81,9 @@ class ResNet18(nn.Module):
 class ResNet50(nn.Module):
     def __init__(self, header, **kwargs):
         super(ResNet50, self).__init__()
-        self.model = ResNet(ResNetBottleNeck, [3, 4, 6, 3])
         self.header = header(**kwargs)
+        dilate = isinstance(self.header, DensityMapHeader)
+        self.model = ResNet(ResNetBottleNeck, [3, 4, 6, 3])
 
     def forward(self, x):
         x = self.model(x)

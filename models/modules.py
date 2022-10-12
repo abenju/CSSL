@@ -21,7 +21,7 @@ class CrowdCountHeader(nn.Module):
 
 
 class DensityMapHeader(nn.Module):
-    def __init__(self, in_channels, channels=1, divide_factor=0):
+    def __init__(self, in_channels, upsample=None):
         super(DensityMapHeader, self).__init__()
 
         inter_channels = in_channels // 4
@@ -30,9 +30,14 @@ class DensityMapHeader(nn.Module):
         self.bn = nn.BatchNorm2d(inter_channels)
         self.relu = nn.ReLU()
         self.drop = nn.Dropout(0.1)
-        self.conv_2 = nn.Conv2d(inter_channels, channels, 1)
+        self.conv_2 = nn.Conv2d(inter_channels, 1, 1)
+
+        self.upsample = nn.Upsample(scale_factor=upsample, mode='bilinear', align_corners=True) if upsample else None
 
     def forward(self, x):
+
+        x = self.upsample(x) if self.upsample else x
+
         x = self.conv_1(x)
         x = self.bn(x)
         x = self.relu(x)
@@ -45,13 +50,13 @@ class DensityMapHeader(nn.Module):
 class ResNetBottleNeck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_channels, out_channels, i_downsample=None, stride=1):
+    def __init__(self, in_channels, out_channels, i_downsample=None, stride=1, dilate=1):
         super(ResNetBottleNeck, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
         self.batch_norm1 = nn.BatchNorm2d(out_channels)
 
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=stride, padding=dilate, dilation=dilate)
         self.batch_norm2 = nn.BatchNorm2d(out_channels)
 
         self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=1, stride=1, padding=0)
@@ -81,7 +86,7 @@ class ResNetBottleNeck(nn.Module):
 class ResNetBlock(nn.Module):
     expansion = 1
 
-    def __init__(self, in_channels, out_channels, i_downsample=None, stride=1):
+    def __init__(self, in_channels, out_channels, i_downsample=None, stride=1, dilate=1):
         super(ResNetBlock, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, stride=stride, bias=False)
