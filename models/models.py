@@ -71,11 +71,21 @@ class ResNet18(nn.Module):
         self.model = ResNet(ResNetBlock, [2, 2, 2, 2])
         self.header = header(**kwargs)
 
+    def _forward(self, x):
+        f = self.model(x)
+        x = self.header(f)
+
+        return x, f
+
     def forward(self, x):
-        x = self.model(x)
-        x = self.header(x)
+        x, f = self._forward(x)
 
         return x
+
+    def features(self, x):
+        x, f = self._forward(x)
+
+        return f
 
 
 class ResNet50(nn.Module):
@@ -190,7 +200,7 @@ class UNet(nn.Module):
 
         self.header = header(**kwargs)
 
-    def forward(self, x):
+    def _forward(self, x):
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
@@ -199,7 +209,17 @@ class UNet(nn.Module):
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
-        x = self.up4(x, x1)
+        f = self.up4(x, x1)
 
-        x = self.header(x)
+        x = self.header(f)
+        return x, f
+
+    def forward(self, x):
+        x, f = self._forward(x)
+
         return x
+
+    def features(self, x):
+        x, f = self._forward(x)
+
+        return f

@@ -159,8 +159,8 @@ if __name__ == "__main__":
 
     with wandb.init(project="CSSL", entity="abenju", name=experiment_name, config=config):
         criterion = torch.nn.MSELoss()
-        optimizer = torch.optim.SGD(model.parameters(), lr=config["lr"], momentum=config["momentum"])
-        #optimizer = torch.optim.Adam(model.parameters())
+        #optimizer = torch.optim.SGD(model.parameters(), lr=config["lr"], momentum=config["momentum"])
+        optimizer = torch.optim.Adam(model.parameters())
         scheduler = None # torch.optim.lr_scheduler.StepLR(optimizer, 30)
 
 
